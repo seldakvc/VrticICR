@@ -10,7 +10,12 @@ import Vaspitac from "../src/models/Vaspitac.js";
 import openApi from "../docs/openapi.js";
 import swaggerSpec from "../src/config/swagger.js";
 import validateBody from "../src/middleware/validateBody.js";
-import { educatorRegistrationRules } from "../src/middleware/validationRules.js";
+import authenticate from "../src/middleware/authenticate.js";
+import { childScope } from "../src/controllers/dijeteController.js";
+import {
+  educatorRegistrationRules,
+  enrollmentRequestRules,
+} from "../src/middleware/validationRules.js";
 import { createToken, verifyToken } from "../src/utils/tokens.js";
 import { comparePassword } from "../src/utils/passwords.js";
 import RegistrationError from "../src/utils/RegistrationError.js";
@@ -57,11 +62,16 @@ test("API requests report the inactive database without opening a connection", a
   assert.equal(mongoose.connection.readyState, 0);
 });
 
-test("all active Laravel API routes have documented methods", () => {
+test("role-protected API routes have documented methods", () => {
   const routes = [
     ["get", "/api/vaspitac"],
-    ["post", "/api/vaspitac/register"],
+    ["post", "/api/vaspitac"],
     ["post", "/api/vaspitac/login"],
+    ["post", "/api/admin/login"],
+    ["get", "/api/staratelj/zahtjevi"],
+    ["post", "/api/staratelj/zahtjevi"],
+    ["get", "/api/upisi"],
+    ["patch", "/api/upisi/{id}"],
     ["get", "/api/vaspitac/me"],
     ["get", "/api/vaspitac/grupa-djeca"],
     ["get", "/api/vaspitac/{id}"],
@@ -87,11 +97,16 @@ test("all active Laravel API routes have documented methods", () => {
     ["get", "/api/dijete/{id}"],
     ["put", "/api/dijete/{id}"],
     ["delete", "/api/dijete/{id}"],
+    ["get", "/api/dijete/{id}/aktivnosti"],
+    ["post", "/api/dijete/{id}/aktivnosti"],
+    ["put", "/api/dijete/{id}/aktivnosti/{aktivnostId}"],
+    ["delete", "/api/dijete/{id}/aktivnosti/{aktivnostId}"],
   ];
 
   for (const [method, path] of routes) {
     assert.ok(swaggerSpec.paths[path]?.[method], `Missing Swagger operation: ${method.toUpperCase()} ${path}`);
   }
+  assert.equal(swaggerSpec.paths["/api/vaspitac/register"], undefined);
 });
 
 test("Mongoose JSON preserves Laravel entity ID names and hides passwords", () => {
@@ -111,13 +126,12 @@ test("Mongoose JSON preserves Laravel entity ID names and hides passwords", () =
   assert.ok("id" in user);
 });
 
-test("educator registration validation returns Laravel-style 422 fields", async () => {
+test("educator account validation does not require public registration or a group assignment", async () => {
   const error = await new Promise((resolve) => {
     validateBody(educatorRegistrationRules)({ body: {} }, {}, resolve);
   });
   assert.equal(error.status, 422);
   assert.deepEqual(Object.keys(error.errors).sort(), [
-    "grupa_id",
     "ime",
     "password",
     "prezime",
@@ -125,6 +139,33 @@ test("educator registration validation returns Laravel-style 422 fields", async 
   ]);
 });
 
+test("enrollment requests require child, address, and parent contact details", async () => {
+  const error = await new Promise((resolve) => {
+    validateBody(enrollmentRequestRules)({ body: {} }, {}, resolve);
+  });
+  assert.equal(error.status, 422);
+  assert.deepEqual(Object.keys(error.errors).sort(), [
+    "adresa",
+    "datum_rodjenja",
+    "ime",
+    "kontakt_roditelja",
+    "prezime",
+  ]);
+});
+
+test("child visibility is scoped to the role, assigned group, and approved enrollment", () => {
+  const groupId = new mongoose.Types.ObjectId();
+  const parentId = new mongoose.Types.ObjectId();
+  assert.deepEqual(childScope({ auth: { role: "admin", user: {} } }), {});
+  assert.deepEqual(childScope({ auth: { role: "vaspitac", user: { grupa_id: groupId } } }), {
+    grupa_id: groupId,
+    upis_status: { $in: ["odobren", null] },
+  });
+  assert.deepEqual(childScope({ auth: { role: "staratelj", user: { _id: parentId } } }), {
+    staratelj_id: parentId,
+    upis_status: { $in: ["odobren", null] },
+  });
+});
 test("foreign-key validation checks the referenced model", async () => {
   const id = new mongoose.Types.ObjectId().toString();
   let queriedId;
@@ -158,7 +199,43 @@ test("Express JWTs carry the account role and use the configured secret", () => 
     const payload = verifyToken(token);
     assert.equal(payload.sub, id);
     assert.equal(payload.role, "staratelj");
+
+    const adminToken = createToken({ _id: id }, "admin");
+    assert.equal(verifyToken(adminToken).role, "admin");
   } finally {
+    if (previousSecret === undefined) {
+      delete process.env.JWT_SECRET;
+    } else {
+      process.env.JWT_SECRET = previousSecret;
+    }
+  }
+});
+
+test("admin tokens authorize data management routes, not guardian self-service", async () => {
+  const previousSecret = process.env.JWT_SECRET;
+  const findById = Vaspitac.findById;
+  process.env.JWT_SECRET = "test-only-secret";
+  Vaspitac.findById = async (_id) => ({ uloga: "admin" });
+
+  try {
+    const id = new mongoose.Types.ObjectId().toString();
+    const token = createToken({ _id: id }, "admin");
+    const request = {
+      get: () => `Bearer ${token}`,
+    };
+
+    const managementError = await new Promise((resolve) => {
+      authenticate("admin", "vaspitac")(request, {}, resolve);
+    });
+    assert.equal(managementError, undefined);
+    assert.equal(request.auth.role, "admin");
+
+    const selfServiceError = await new Promise((resolve) => {
+      authenticate("staratelj")(request, {}, resolve);
+    });
+    assert.equal(selfServiceError.status, 401);
+  } finally {
+    Vaspitac.findById = findById;
     if (previousSecret === undefined) {
       delete process.env.JWT_SECRET;
     } else {

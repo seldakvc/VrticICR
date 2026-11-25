@@ -28,6 +28,9 @@ function validateBody(rules) {
       let valid = true;
       if (rule.type === "string") {
         valid = typeof value === "string";
+      } else if (rule.type === "date") {
+        valid = (typeof value === "string" || value instanceof Date)
+          && !Number.isNaN(new Date(value).getTime());
       } else if (rule.type === "integer") {
         valid = (typeof value === "number" && Number.isInteger(value))
           || (typeof value === "string" && /^-?\d+$/.test(value));
@@ -38,7 +41,12 @@ function validateBody(rules) {
       if (!valid) {
         errors[field] = [rule.type === "objectId"
           ? `The ${field} must be a valid identifier.`
-          : `The ${field} must be ${rule.type === "integer" ? "an integer" : `a ${rule.type}`}.`];
+          : `The ${field} must be ${rule.type === "integer" ? "an integer" : rule.type === "date" ? "a valid date" : `a ${rule.type}`}.`];
+        continue;
+      }
+
+      if (rule.values && !rule.values.includes(value)) {
+        errors[field] = [`The selected ${field} is invalid.`];
         continue;
       }
 
@@ -66,6 +74,8 @@ function validateBody(rules) {
 
       validated[field] = rule.type === "integer" && typeof value === "string"
         ? Number(value)
+        : rule.type === "date"
+          ? new Date(value)
         : value;
     }
 

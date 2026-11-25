@@ -9,13 +9,20 @@ async function mojiPodaci(req, res) {
 }
 
 async function mojaDjeca(req, res) {
-  return res.json(await Dijete.find({ staratelj_id: req.auth.user._id }));
+  return res.json(await Dijete.find({
+    staratelj_id: req.auth.user._id,
+    upis_status: { $in: ["odobren", null] },
+  }));
 }
 
 async function mojeDijete(req, res) {
   const id = getObjectId(req.params.id);
   const dijete = id
-    ? await Dijete.findOne({ _id: id, staratelj_id: req.auth.user._id })
+    ? await Dijete.findOne({
+      _id: id,
+      staratelj_id: req.auth.user._id,
+      upis_status: { $in: ["odobren", null] },
+    })
     : null;
   if (!dijete) {
     throw new ApiError(404, "Not found");

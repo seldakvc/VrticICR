@@ -5,6 +5,7 @@ import { isObjectId } from "../utils/objectId.js";
 import { verifyToken } from "../utils/tokens.js";
 
 const userModels = {
+  admin: Vaspitac,
   staratelj: Staratelj,
   vaspitac: Vaspitac,
 };
@@ -29,9 +30,7 @@ function authenticate(...allowedRoles) {
 
     const roles = payload.role && allowedRoles.includes(payload.role)
       ? [payload.role]
-      : allowedRoles.length > 1 && !payload.role
-        ? allowedRoles
-        : [];
+      : [];
 
     if (!roles.length || !isObjectId(payload.sub)) {
       return next(new ApiError(401, "Unauthenticated."));
@@ -40,7 +39,7 @@ function authenticate(...allowedRoles) {
     try {
       for (const role of roles) {
         const user = await userModels[role].findById(payload.sub);
-        if (user) {
+        if (user && (role !== "admin" || user.uloga === "admin")) {
           req.auth = { role, user };
           return next();
         }

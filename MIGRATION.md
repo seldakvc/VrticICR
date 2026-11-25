@@ -6,10 +6,11 @@
 - [x] Add Express configuration, middleware, Mongoose models, controllers, and routes.
 - [x] Add OpenAPI documentation and environment example.
 - [x] Validate imports, startup, and endpoint documentation.
-- [ ] Configure and explicitly start the MongoDB connection after supplying `MONGODB_URI`; startup intentionally does not connect.
+- [x] Configure and start the MongoDB connection from `MONGODB_URI` before accepting requests.
+- [x] Add server-side role checks, parent enrollment requests, admin review, group assignment, and child activities.
 - [ ] Confirm any additional legacy table columns/types against the original database schema before expanding the Mongoose models; create-table migrations for the domain tables are absent.
 
-MongoDB ObjectIds will replace Laravel's auto-incrementing IDs. Existing Laravel JWTs contain SQL IDs and will not be accepted by Express; users must log in to receive an Express token. The MongoDB connection configuration will be provided but will not connect automatically.
+MongoDB ObjectIds will replace Laravel's auto-incrementing IDs. Existing Laravel JWTs contain SQL IDs and will not be accepted by Express; users must log in to receive an Express token. The server connects to MongoDB at startup and does not accept requests unless the connection succeeds.
 
 The Laravel project has no create-table migrations for `dijete`, `grupa`, `staratelj`, or `vaspitac`. Their Mongoose fields will therefore be limited to fields evidenced by the Laravel models and auth validation; uncertain SQL field types will not be guessed.
 
@@ -38,7 +39,7 @@ The Laravel project has no create-table migrations for `dijete`, `grupa`, `stara
 
 `routes/auth.php` is not loaded by `routes/api.php`; its routes are not part of the active Laravel API. `app/Http/Middleware/JwtMiddleware.php` is a pass-through and is not assigned to the active routes; authentication is provided by the configured JWT guards.
 
-## Active Laravel API surface
+## Active Laravel API surface (source behavior before Express RBAC)
 
 All routes below are prefixed with `/api`.
 

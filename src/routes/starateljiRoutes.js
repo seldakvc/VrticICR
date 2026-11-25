@@ -6,7 +6,7 @@ import { guardianRegistrationRules } from "../middleware/validationRules.js";
 
 const router = express.Router();
 
-router.use(authenticate("vaspitac"));
+router.use(authenticate("admin"));
 router.get("/", starateljController.getStarateljs);
 router.get("/:id", starateljController.getStarateljById);
 router.post("/", validateBody(guardianRegistrationRules), starateljController.createStaratelj);

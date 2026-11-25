@@ -8,6 +8,7 @@ const starateljSchema = new mongoose.Schema(
     kontakt: { type: String, maxlength: 255 },
     adresa: { type: String, maxlength: 255 },
     status: Number,
+    uloga: { type: String, enum: ["staratelj"], default: "staratelj", immutable: true },
     username: { type: String, maxlength: 255, unique: true },
     password: { type: String, minlength: 6, select: false },
   },
